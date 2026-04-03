@@ -125,6 +125,138 @@ class _KitchenScreenState extends State<KitchenScreen>
     _foodAnimationController.reset();
   }
 
+  void _showConfirmDialog(FoodItem food) {
+    final gameState = context.read<GameStateProvider>();
+    
+    if (!gameState.canAfford(food.price)) {
+      _showError('No tienes suficientes monedas');
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(UIConstants.radiusLarge),
+        ),
+        title: Row(
+          children: [
+            Text(food.emoji, style: const TextStyle(fontSize: 40)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                food.name,
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 20,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '¿Efectos:',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                if (food.hungerRestore > 0)
+                  _buildEffectChip('🍎 +${food.hungerRestore.toInt()}'),
+                if (food.energyRestore > 0)
+                  _buildEffectChip('⚡ +${food.energyRestore.toInt()}'),
+                if (food.funRestore > 0)
+                  _buildEffectChip('⭐ +${food.funRestore.toInt()}'),
+                if (food.cleanlinessRestore > 0)
+                  _buildEffectChip('💗 +${food.cleanlinessRestore.toInt()}'),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Costo:',
+                  style: TextStyle(color: AppColors.textSecondary),
+                ),
+                Row(
+                  children: [
+                    const Text('💰', style: TextStyle(fontSize: 16)),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${food.price}',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.warning,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Tu balance: ${gameState.coins} coins',
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppColors.textMuted,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _feedPou(food);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.restaurant, color: Colors.white, size: 18),
+                SizedBox(width: 8),
+                Text('Alimentar'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEffectChip(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(UIConstants.radiusSmall),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: AppColors.textPrimary,
+        ),
+      ),
+    );
+  }
+
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -137,9 +269,6 @@ class _KitchenScreenState extends State<KitchenScreen>
         ),
         backgroundColor: AppColors.error,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(UIConstants.radiusMedium),
-        ),
       ),
     );
   }
@@ -154,12 +283,67 @@ class _KitchenScreenState extends State<KitchenScreen>
             // Header
             _buildHeader(),
             
-            // Kitchen background with Pou
+            // Kitchen area with Pou visible
             Expanded(
-              child: _buildKitchenArea(),
+              child: Stack(
+                children: [
+                  // Kitchen background
+                  _buildKitchenBackground(),
+                  
+                  // Pou character - always visible
+                  Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // Food animation (when feeding)
+                        if (_currentFood != null && _isFeeding)
+                          AnimatedBuilder(
+                            animation: _foodAnimationController,
+                            builder: (context, child) {
+                              return SlideTransition(
+                                position: _foodSlideAnimation,
+                                child: ScaleTransition(
+                                  scale: _foodScaleAnimation,
+                                  child: Text(
+                                    _currentFood!.emoji,
+                                    style: const TextStyle(fontSize: 50),
+                                  ),
+                                ),
+                              );
+                            },
+                          )
+                        else
+                          const SizedBox(height: 50),
+                        
+                        const SizedBox(height: 20),
+                        
+                        // Pou
+                        const PouCharacter(size: 150),
+                      ],
+                    ),
+                  ),
+                  
+                  // Hearts particles
+                  if (_showHearts)
+                    const Positioned.fill(
+                      child: HeartsParticles(),
+                    ),
+                  
+                  // Stat boost popup
+                  if (_showStatBoost && _statBoostData != null)
+                    Positioned(
+                      top: 80,
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: StatBoostPopup(data: _statBoostData!),
+                      ),
+                    ),
+                ],
+              ),
             ),
             
-            // Food menu (bottom sheet)
+            // Food menu - smaller bottom sheet (30% height)
             _buildFoodMenu(),
           ],
         ),
@@ -211,65 +395,6 @@ class _KitchenScreenState extends State<KitchenScreen>
     );
   }
 
-  Widget _buildKitchenArea() {
-    return Stack(
-      children: [
-        // Kitchen background
-        _buildKitchenBackground(),
-        
-        // Pou character
-        Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Food animation (when feeding)
-              if (_currentFood != null && _isFeeding)
-                AnimatedBuilder(
-                  animation: _foodAnimationController,
-                  builder: (context, child) {
-                    return SlideTransition(
-                      position: _foodSlideAnimation,
-                      child: ScaleTransition(
-                        scale: _foodScaleAnimation,
-                        child: Text(
-                          _currentFood!.emoji,
-                          style: const TextStyle(fontSize: 60),
-                        ),
-                      ),
-                    );
-                  },
-                )
-              else
-                const SizedBox(height: 60),
-              
-              const SizedBox(height: 20),
-              
-              // Pou with smaller size for kitchen
-              PouCharacter(size: 180),
-            ],
-          ),
-        ),
-        
-        // Hearts particles
-        if (_showHearts)
-          const Positioned.fill(
-            child: HeartsParticles(),
-          ),
-        
-        // Stat boost popup
-        if (_showStatBoost && _statBoostData != null)
-          Positioned(
-            top: 100,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: StatBoostPopup(data: _statBoostData!),
-            ),
-          ),
-      ],
-    );
-  }
-
   Widget _buildKitchenBackground() {
     return Container(
       decoration: BoxDecoration(
@@ -277,7 +402,7 @@ class _KitchenScreenState extends State<KitchenScreen>
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            AppColors.kitchenColor.withOpacity(0.3),
+            AppColors.kitchenColor.withOpacity(0.2),
             AppColors.background,
           ],
         ),
@@ -290,7 +415,7 @@ class _KitchenScreenState extends State<KitchenScreen>
             left: 0,
             right: 0,
             child: Container(
-              height: 150,
+              height: 120,
               decoration: BoxDecoration(
                 color: AppColors.surface,
                 borderRadius: const BorderRadius.vertical(
@@ -309,51 +434,50 @@ class _KitchenScreenState extends State<KitchenScreen>
             ),
           ),
           
-          // Decorative elements
           // Hanging pots
           Positioned(
             top: 50,
-            left: 50,
+            left: 40,
             child: Column(
               children: [
-                const Text('🫕', style: TextStyle(fontSize: 40)),
-                const SizedBox(height: 10),
-                const Text('🫕', style: TextStyle(fontSize: 30)),
+                const Text('🫕', style: TextStyle(fontSize: 35)),
+                const SizedBox(height: 8),
+                const Text('🫕', style: TextStyle(fontSize: 25)),
               ],
             ),
           ),
           
           Positioned(
             top: 50,
-            right: 50,
+            right: 40,
             child: Column(
               children: [
-                const Text('🍳', style: TextStyle(fontSize: 40)),
-                const SizedBox(height: 10),
-                const Text('🥘', style: TextStyle(fontSize: 30)),
+                const Text('🍳', style: TextStyle(fontSize: 35)),
+                const SizedBox(height: 8),
+                const Text('🥘', style: TextStyle(fontSize: 25)),
               ],
             ),
           ),
           
           // Window
           Positioned(
-            top: 100,
+            top: 80,
             left: 0,
             right: 0,
             child: Center(
               child: Container(
-                width: 200,
-                height: 120,
+                width: 180,
+                height: 100,
                 decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.2),
+                  color: Colors.blue.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(UIConstants.radiusLarge),
-                  border: Border.all(color: Colors.white.withOpacity(0.3), width: 3),
+                  border: Border.all(color: Colors.white.withOpacity(0.2), width: 3),
                 ),
                 child: const Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text('☀️', style: TextStyle(fontSize: 40)),
-                    Text('☁️ ☁️', style: TextStyle(fontSize: 20)),
+                    Text('☀️', style: TextStyle(fontSize: 30)),
+                    Text('☁️ ☁️', style: TextStyle(fontSize: 16)),
                   ],
                 ),
               ),
@@ -368,12 +492,12 @@ class _KitchenScreenState extends State<KitchenScreen>
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Text(emoji, style: const TextStyle(fontSize: 40)),
+        Text(emoji, style: const TextStyle(fontSize: 32)),
         const SizedBox(height: 4),
         Text(
           label,
           style: const TextStyle(
-            fontSize: 12,
+            fontSize: 11,
             color: AppColors.textSecondary,
           ),
         ),
@@ -382,8 +506,52 @@ class _KitchenScreenState extends State<KitchenScreen>
   }
 
   Widget _buildFoodMenu() {
-    return FoodMenu(
-      onFoodSelected: (food) => _feedPou(food),
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(UIConstants.radiusXLarge),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, -5),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Handle
+          Container(
+            margin: const EdgeInsets.only(top: UIConstants.paddingSmall),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppColors.divider,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          
+          // Title
+          const Padding(
+            padding: EdgeInsets.all(UIConstants.paddingSmall),
+            child: Text(
+              '🍽️ Selecciona comida',
+              style: TextStyle(
+                fontSize: 14,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+          
+          // Food menu with confirmation
+          FoodMenu(
+            onFoodSelected: (food) => _showConfirmDialog(food),
+          ),
+        ],
+      ),
     );
   }
 }

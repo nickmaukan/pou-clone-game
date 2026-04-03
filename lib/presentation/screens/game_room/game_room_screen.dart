@@ -163,13 +163,6 @@ class _GameRoomScreenState extends State<GameRoomScreen> {
 
           // Coming soon
           _buildComingSoonCard(
-            emoji: '🧠',
-            title: 'MEMORY MATCH',
-          ),
-
-          const SizedBox(height: UIConstants.paddingMedium),
-
-          _buildComingSoonCard(
             emoji: '🎯',
             title: 'FOOD DROP',
           ),

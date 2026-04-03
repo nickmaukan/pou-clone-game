@@ -21,11 +21,22 @@ class PetProvider extends ChangeNotifier {
   double get fun => _pet?.fun ?? 100;
   double get energy => _pet?.energy ?? 100;
   
+  // State accessors
+  bool get isSleeping => _pet?.state == PetState.sleeping;
+  bool get isEating => _pet?.state == PetState.eating;
+
+  // NEW: Sick state accessors
+  bool get isSick => _pet?.isSick ?? false;
+  bool get isFainted => _pet?.isFainted ?? false;
+  bool get needsAttention => _pet?.needsMedicalAttention ?? false;
+
   // Animation state
   PouAnimation _currentAnimation = PouAnimation.idle;
   PouAnimation get currentAnimation => _currentAnimation;
+
+  // Set animation temporarily
   
-  PouExpression get expression => _pet?.currentExpression ?? PouExpression.neutral;
+  PouExpression get expression => _pet?.expression ?? PouExpression.neutral;
   
   // Initialize
   Future<void> init() async {
@@ -37,7 +48,7 @@ class PetProvider extends ChangeNotifier {
     
     if (_pet == null) {
       // Create new pet
-      _pet = PetModel.create(name: 'Pou');
+      _pet = await PetModel.create('Pou');
       await db.savePet(_pet!);
     }
     

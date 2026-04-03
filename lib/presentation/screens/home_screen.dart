@@ -4,9 +4,12 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/constants/ui_constants.dart';
 import '../../core/enums/room_type.dart';
+import '../../data/services/audio_service.dart';
+import '../../data/services/database_service.dart';
 import '../providers/pet_provider.dart';
 import '../providers/game_state_provider.dart';
 import '../providers/navigation_provider.dart';
+import '../providers/inventory_provider.dart';
 import '../widgets/stat_bar.dart';
 import '../widgets/coin_display.dart';
 import '../widgets/pou_character.dart';
@@ -25,66 +28,131 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  bool _soundEnabled = true;
+  bool _musicEnabled = true;
+  int _currentIndex = 0; // 0=Living, 1=Kitchen, 2=Bathroom, 3=Lab, 4=GameRoom, 5=Closet
+
   @override
   void initState() {
     super.initState();
-    // Initialize providers
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<PetProvider>().init();
       context.read<GameStateProvider>().init();
+      
+      final audio = AudioService.getInstance();
+      _soundEnabled = audio.soundEnabled;
+      _musicEnabled = audio.musicEnabled;
     });
+  }
+
+  void _toggleSound(bool value) {
+    setState(() {
+      _soundEnabled = value;
+    });
+    AudioService.getInstance().setSoundEnabled(value);
+  }
+
+  void _toggleMusic(bool value) {
+    setState(() {
+      _musicEnabled = value;
+    });
+    AudioService.getInstance().setMusicEnabled(value);
+  }
+
+  void _onNavTap(int index) {
+    setState(() {
+      _currentIndex = index;
+    });
+    // Also sync with NavigationProvider
+    context.read<NavigationProvider>().setRoom(RoomType.values[index]);
+  }
+
+  Future<void> _resetGame() async {
+    try {
+      final db = await DatabaseService.getInstance();
+      await db.clearAll();
+
+      if (mounted) {
+        context.read<PetProvider>().init();
+        context.read<GameStateProvider>().init();
+        if (mounted) {
+          context.read<InventoryProvider>().clearAll();
+        }
+      }
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Juego reiniciado'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
+    } catch (e) {
+      debugPrint('Error resetting game: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al reiniciar: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Listen to navigation changes from other sources (like back buttons in screens)
     return Consumer<NavigationProvider>(
       builder: (context, nav, _) {
-        // Route to specific room screens
-        if (nav.currentRoom == RoomType.kitchen) {
-          return const KitchenScreen();
+        // Sync index if navigation came from elsewhere
+        final roomIndex = RoomType.values.indexOf(nav.currentRoom);
+        if (roomIndex != _currentIndex && roomIndex >= 0) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() {
+                _currentIndex = roomIndex;
+              });
+            }
+          });
         }
-        if (nav.currentRoom == RoomType.gameRoom) {
-          return const GameRoomScreen();
-        }
-        if (nav.currentRoom == RoomType.bathroom) {
-          return const BathroomScreen();
-        }
-        if (nav.currentRoom == RoomType.lab) {
-          return const LabScreen();
-        }
-        if (nav.currentRoom == RoomType.closet) {
-          return const ClosetScreen();
-        }
-        
-        // Default: Living Room
-        return _buildLivingRoom();
+
+        return Scaffold(
+          backgroundColor: AppColors.background,
+          body: SafeArea(
+            child: Column(
+              children: [
+                // Header - changes based on current room
+                _buildHeader(nav),
+
+                // Main content - IndexedStack keeps all rooms in memory
+                Expanded(
+                  child: IndexedStack(
+                    index: _currentIndex,
+                    children: [
+                      _buildLivingRoomContent(),
+                      const KitchenScreen(),
+                      const BathroomScreen(),
+                      const LabScreen(),
+                      const GameRoomScreen(),
+                      const ClosetScreen(),
+                    ],
+                  ),
+                ),
+
+                // Bottom navigation - ALWAYS visible
+                _buildBottomNavigation(),
+              ],
+            ),
+          ),
+        );
       },
     );
   }
 
-  Widget _buildLivingRoom() {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Header
-            _buildHeader(),
-            
-            // Main content area (Living Room)
-            Expanded(
-              child: _buildLivingRoomContent(),
-            ),
-            
-            // Bottom navigation
-            _buildBottomNavigation(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
+  Widget _buildHeader(NavigationProvider nav) {
     return Container(
       height: UIConstants.headerHeight,
       padding: const EdgeInsets.symmetric(horizontal: UIConstants.paddingMedium),
@@ -98,20 +166,18 @@ class _HomeScreenState extends State<HomeScreen> {
             },
             icon: const Icon(Icons.settings, color: AppColors.textSecondary),
           ),
-          
-          // Room title
-          Consumer<NavigationProvider>(
-            builder: (context, nav, _) => Text(
-              nav.roomName.toUpperCase(),
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
-                letterSpacing: 2,
-              ),
+
+          // Room title - changes based on current room
+          Text(
+            _getRoomTitle(),
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textPrimary,
+              letterSpacing: 2,
             ),
           ),
-          
+
           // Coins
           Consumer<GameStateProvider>(
             builder: (context, game, _) => CoinDisplay(coins: game.coins),
@@ -119,6 +185,25 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+  }
+
+  String _getRoomTitle() {
+    switch (_currentIndex) {
+      case 0:
+        return '🏠 LIVING ROOM';
+      case 1:
+        return '🍳 KITCHEN';
+      case 2:
+        return '🛁 BATHROOM';
+      case 3:
+        return '🧪 LABORATORY';
+      case 4:
+        return '🎮 GAME ROOM';
+      case 5:
+        return '👗 CLOSET';
+      default:
+        return '🏠 HOME';
+    }
   }
 
   Widget _buildLivingRoomContent() {
@@ -177,12 +262,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // Pou with interaction
                       const PouCharacter(size: 200),
-                      
+
                       const SizedBox(height: UIConstants.paddingLarge),
-                      
-                      // Pet name
+
                       Text(
                         petProvider.pet?.name ?? 'Pou',
                         style: const TextStyle(
@@ -191,10 +274,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           color: AppColors.textPrimary,
                         ),
                       ),
-                      
+
                       const SizedBox(height: UIConstants.paddingSmall),
-                      
-                      // Evolution level
+
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: UIConstants.paddingMedium,
@@ -205,17 +287,16 @@ class _HomeScreenState extends State<HomeScreen> {
                           borderRadius: BorderRadius.circular(UIConstants.radiusRound),
                         ),
                         child: Text(
-                          'Nivel ${petProvider.pet?.evolutionLevel.index ?? 0 + 1}',
+                          'Nivel ${(petProvider.pet?.evolutionLevel.index ?? 0) + 1}',
                           style: const TextStyle(
                             color: AppColors.primaryLight,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
-                      
+
                       const SizedBox(height: UIConstants.paddingMedium),
-                      
-                      // Tap instruction
+
                       const Text(
                         '💡 Toca a Pou para jugar (+5 diversión)',
                         style: TextStyle(
@@ -251,66 +332,68 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      child: Consumer<NavigationProvider>(
-        builder: (context, nav, _) {
-          return Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: RoomType.values.map((room) {
-              final isSelected = nav.currentRoom == room;
-              return GestureDetector(
-                onTap: () => nav.setRoom(room),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.all(UIConstants.paddingSmall),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? AppColors.primary.withOpacity(0.2)
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(UIConstants.radiusMedium),
-                        ),
-                        child: Text(
-                          room.emoji,
-                          style: TextStyle(
-                            fontSize: isSelected ? 36 : 28,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        room.name,
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: isSelected
-                              ? AppColors.primary
-                              : AppColors.textMuted,
-                          fontWeight: isSelected
-                              ? FontWeight.bold
-                              : FontWeight.normal,
-                        ),
-                      ),
-                      if (isSelected)
-                        Container(
-                          margin: const EdgeInsets.only(top: 6),
-                          width: 6,
-                          height: 6,
-                          decoration: const BoxDecoration(
-                            color: AppColors.primary,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                    ],
-                  ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          _buildNavItem(0, '🏠', 'Home'),
+          _buildNavItem(1, '🍳', 'Kitchen'),
+          _buildNavItem(2, '🛁', 'Bath'),
+          _buildNavItem(3, '🧪', 'Lab'),
+          _buildNavItem(4, '🎮', 'Games'),
+          _buildNavItem(5, '👗', 'Closet'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNavItem(int index, String emoji, String label) {
+    final isSelected = _currentIndex == index;
+    
+    return GestureDetector(
+      onTap: () => _onNavTap(index),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(UIConstants.paddingSmall),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? AppColors.primary.withOpacity(0.2)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(UIConstants.radiusMedium),
+              ),
+              child: Text(
+                emoji,
+                style: TextStyle(
+                  fontSize: isSelected ? 36 : 28,
                 ),
-              );
-            }).toList(),
-          );
-        },
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                color: isSelected ? AppColors.primary : AppColors.textMuted,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+            if (isSelected)
+              Container(
+                margin: const EdgeInsets.only(top: 6),
+                width: 6,
+                height: 6,
+                decoration: const BoxDecoration(
+                  color: AppColors.primary,
+                  shape: BoxShape.circle,
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -329,7 +412,6 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Handle
             Container(
               width: 40,
               height: 4,
@@ -339,8 +421,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(height: UIConstants.paddingLarge),
-            
-            // Title
+
             const Text(
               '⚙️ Configuración',
               style: TextStyle(
@@ -350,42 +431,47 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(height: UIConstants.paddingLarge),
-            
-            // Sound toggle
+
             ListTile(
-              leading: const Icon(Icons.volume_up, color: AppColors.textSecondary),
+              leading: Icon(
+                _soundEnabled ? Icons.volume_up : Icons.volume_off,
+                color: AppColors.textSecondary,
+              ),
               title: const Text('Sonido', style: TextStyle(color: AppColors.textPrimary)),
               trailing: Switch(
-                value: true,
-                onChanged: (value) {},
+                value: _soundEnabled,
+                onChanged: _toggleSound,
                 activeColor: AppColors.primary,
               ),
             ),
-            
-            // Music toggle
+
             ListTile(
-              leading: const Icon(Icons.music_note, color: AppColors.textSecondary),
+              leading: Icon(
+                _musicEnabled ? Icons.music_note : Icons.music_off,
+                color: AppColors.textSecondary,
+              ),
               title: const Text('Música', style: TextStyle(color: AppColors.textPrimary)),
               trailing: Switch(
-                value: true,
-                onChanged: (value) {},
+                value: _musicEnabled,
+                onChanged: _toggleMusic,
                 activeColor: AppColors.primary,
               ),
             ),
-            
+
             const Divider(color: AppColors.divider),
-            
-            // Reset game
+
             ListTile(
               leading: const Icon(Icons.refresh, color: AppColors.warning),
-              title: const Text('Reiniciar Juego',
-                  style: TextStyle(color: AppColors.warning)),
+              title: const Text(
+                'Reiniciar Juego',
+                style: TextStyle(color: AppColors.warning),
+              ),
               onTap: () {
                 Navigator.pop(context);
                 _showResetConfirmation(context);
               },
             ),
-            
+
             const SizedBox(height: UIConstants.paddingLarge),
           ],
         ),
@@ -416,8 +502,8 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           ElevatedButton(
             onPressed: () {
-              // TODO: Implement reset
               Navigator.pop(context);
+              _resetGame();
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.error,

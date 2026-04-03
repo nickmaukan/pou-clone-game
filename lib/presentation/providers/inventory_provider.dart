@@ -126,6 +126,16 @@ class InventoryProvider extends ChangeNotifier {
     notifyListeners();
   }
   
+  // Clear all (for reset)
+  void clearAll() {
+    _equippedHat = null;
+    _equippedGlasses = null;
+    _equippedOutfit = null;
+    _equippedAccessories = [];
+    _equippedBackground = null;
+    notifyListeners();
+  }
+  
   // Get equipped items as list
   List<String> get allEquippedItems {
     final List<String> items = [];

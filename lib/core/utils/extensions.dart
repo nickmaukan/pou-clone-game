@@ -11,7 +11,9 @@ extension StringExtensions on String {
 
 extension DoubleExtensions on double {
   double clampToRange(double min, double max) {
-    return clamp(min, max);
+    if (this < min) return min;
+    if (this > max) return max;
+    return this;
   }
 
   String toPercentageString() {

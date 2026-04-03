@@ -5,6 +5,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/constants/ui_constants.dart';
 import '../../../core/enums/room_type.dart';
 import '../../../data/models/potion_item.dart';
+import '../../../data/models/food_item.dart';
 import '../../providers/pet_provider.dart';
 import '../../providers/game_state_provider.dart';
 import '../../providers/navigation_provider.dart';
@@ -481,7 +482,96 @@ class _LabScreenState extends State<LabScreen>
             const SizedBox(height: UIConstants.paddingMedium),
             _buildPotionInfo(),
           ],
+          
+          // NEW: Free Recovery Medicine (only when pet is sick)
+          if (_isPetSick(context))
+            _buildRecoveryMedicineButton(context),
         ],
+      ),
+    );
+  }
+
+  bool _isPetSick(BuildContext context) {
+    final pet = context.read<PetProvider>();
+    return pet.isSick || pet.isFainted || pet.needsAttention;
+  }
+
+  Widget _buildRecoveryMedicineButton(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.all(UIConstants.paddingMedium),
+      padding: const EdgeInsets.all(UIConstants.paddingMedium),
+      decoration: BoxDecoration(
+        color: Colors.green.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(UIConstants.radiusLarge),
+        border: Border.all(color: Colors.green, width: 2),
+      ),
+      child: Column(
+        children: [
+          const Text(
+            '💊 MEDICINA DE EMERGENCIA',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.green,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Gratis - Restaura todos los stats',
+            style: TextStyle(
+              fontSize: 12,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () => _useRecoveryPotion(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: UIConstants.paddingLarge,
+                  vertical: UIConstants.paddingMedium,
+                ),
+              ),
+              icon: const Icon(Icons.healing, color: Colors.white),
+              label: const Text('USAR GRATIS', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _useRecoveryPotion(BuildContext context) async {
+    final pet = context.read<PetProvider>();
+    final gameState = context.read<GameStateProvider>();
+
+    // Free recovery - restore all stats
+    pet.feed(FoodItem(
+      id: 'recovery_medicine',
+      name: 'Medicina',
+      emoji: '💊',
+      price: 0,
+      hungerRestore: 30,
+      cleanlinessRestore: 30,
+      funRestore: 30,
+      energyRestore: 30,
+      category: FoodCategory.special,
+    ));
+
+    // Show success message
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Row(
+          children: [
+            Text('💊', style: TextStyle(fontSize: 24)),
+            SizedBox(width: 8),
+            Text('¡Medicina aplicada! +30 a todos los stats'),
+          ],
+        ),
+        backgroundColor: Colors.green,
       ),
     );
   }

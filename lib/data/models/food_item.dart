@@ -1,6 +1,5 @@
 // lib/data/models/food_item.dart
 import 'package:flutter/material.dart';
-import '../../core/enums/item_category.dart';
 import '../../core/theme/app_colors.dart';
 
 class FoodItem {

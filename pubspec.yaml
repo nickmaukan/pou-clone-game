@@ -38,13 +38,6 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   
-  # Asset folders (using emojis as placeholders)
-  # Actual image assets would go in these folders
-  
-  # Example of how to include assets when you have images:
-  # assets:
-  #   - assets/images/pou/
-  #   - assets/images/rooms/
-  #   - assets/images/food/
-  #   - assets/images/items/
-  #   - assets/sounds/
+  # Sprite assets (PixelLab generated)
+  assets:
+    - assets/sprites/

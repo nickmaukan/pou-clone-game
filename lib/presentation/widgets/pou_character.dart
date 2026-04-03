@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/enums/pet_state.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/sprite_manager.dart';
 import '../providers/pet_provider.dart';
 
 class PouCharacter extends StatefulWidget {
@@ -47,23 +48,23 @@ class _PouCharacterState extends State<PouCharacter>
     super.dispose();
   }
 
-  String _getPouEmoji(PouExpression expression) {
+  String _getExpressionName(PouExpression expression) {
     switch (expression) {
       case PouExpression.happy:
-        return '😄';
+        return 'happy';
       case PouExpression.sad:
-        return '😢';
+        return 'sad';
       case PouExpression.surprised:
-        return '😲';
+        return 'neutral';
       case PouExpression.tired:
-        return '😴';
+        return 'tired';
       case PouExpression.hungry:
-        return '😋';
+        return 'hungry';
       case PouExpression.dirty:
-        return '🤢';
+        return 'sad';
       case PouExpression.neutral:
       default:
-        return '🟤';
+        return 'neutral';
     }
   }
 
@@ -91,13 +92,14 @@ class _PouCharacterState extends State<PouCharacter>
     return Consumer<PetProvider>(
       builder: (context, petProvider, _) {
         final expression = petProvider.expression;
-        final emoji = _getPouEmoji(expression);
+        final spriteName = _getExpressionName(expression);
         final glowColor = _getGlowColor(expression);
 
         return GestureDetector(
           onTapDown: (_) => setState(() => _isPressed = true),
           onTapUp: (_) {
             setState(() => _isPressed = false);
+            // Tap interaction - add fun
             petProvider.play(5);
           },
           onTapCancel: () => setState(() => _isPressed = false),
@@ -105,45 +107,31 @@ class _PouCharacterState extends State<PouCharacter>
             animation: _controller,
             builder: (context, child) {
               return Transform.translate(
-                offset: Offset(0, _isPressed ? 5 : -_bounceAnimation.value),
+                offset: Offset(0, -_bounceAnimation.value),
                 child: Transform.scale(
-                  scale: _isPressed ? 0.95 : _scaleAnimation.value,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
+                  scale: _isPressed ? 0.9 : _scaleAnimation.value,
+                  child: Stack(
+                    alignment: Alignment.center,
                     children: [
-                      // Pou body with glow
+                      // Glow effect
                       Container(
-                        width: widget.size,
-                        height: widget.size,
+                        width: widget.size * 1.2,
+                        height: widget.size * 1.2,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: AppColors.primary.withOpacity(0.1),
                           boxShadow: [
                             BoxShadow(
-                              color: glowColor.withOpacity(0.4),
-                              blurRadius: 40,
+                              color: glowColor.withOpacity(0.5),
+                              blurRadius: 30,
                               spreadRadius: 10,
                             ),
                           ],
                         ),
-                        child: Center(
-                          child: Text(
-                            emoji,
-                            style: TextStyle(
-                              fontSize: widget.size * 0.6,
-                            ),
-                          ),
-                        ),
                       ),
-                      
-                      // Shadow
-                      Container(
-                        width: widget.size * 0.6,
-                        height: 20,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(50),
-                          color: Colors.black.withOpacity(0.2),
-                        ),
+                      // Sprite image (with emoji fallback)
+                      SpriteManager.getPouSprite(
+                        spriteName,
+                        size: widget.size,
                       ),
                     ],
                   ),

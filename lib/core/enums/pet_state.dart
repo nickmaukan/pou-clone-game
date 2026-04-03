@@ -1,4 +1,6 @@
 // lib/core/enums/pet_state.dart
+enum PetState { normal, sick, fainted, sleeping, eating }
+
 enum PouAnimation {
   idle,
   happy,
@@ -18,6 +20,7 @@ enum PouExpression {
   tired,
   hungry,
   dirty,
+  sick,  // NEW for sick state
 }
 
 enum EvolutionLevel {

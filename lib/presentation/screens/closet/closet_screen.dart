@@ -333,7 +333,7 @@ class _ClosetScreenState extends State<ClosetScreen>
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  category.displayName,
+                  category.displayName,  // ADDED LABELS
                   style: const TextStyle(fontSize: 10),
                 ),
               ],

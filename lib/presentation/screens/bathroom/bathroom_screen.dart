@@ -1,18 +1,18 @@
 // lib/presentation/screens/bathroom/bathroom_screen.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../../core/theme/app_colors.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../../../core/constants/ui_constants.dart';
+import '../../../core/theme/app_colors.dart';
 import '../../../core/enums/room_type.dart';
 import '../../../data/models/bath_cleaning_action.dart';
 import '../../providers/pet_provider.dart';
 import '../../providers/game_state_provider.dart';
 import '../../providers/navigation_provider.dart';
-import '../../widgets/pou_character.dart';
+import '../../widgets/stat_bar.dart';
 import '../../widgets/coin_display.dart';
-import '../../widgets/water_droplets.dart';
-import '../../widgets/bubbles_effect.dart';
-import '../../widgets/sparkle_particles.dart';
+import '../../widgets/pou_character.dart';
 
 class BathroomScreen extends StatefulWidget {
   const BathroomScreen({super.key});
@@ -22,31 +22,24 @@ class BathroomScreen extends StatefulWidget {
 }
 
 class _BathroomScreenState extends State<BathroomScreen>
-    with TickerProviderStateMixin {
-  CleaningType? _selectedCleaningType;
+    with SingleTickerProviderStateMixin {
   bool _isCleaning = false;
+  CleaningType? _selectedCleaningType;
   double _cleaningProgress = 0;
   bool _showSparkles = false;
-
   late AnimationController _progressController;
-  late Animation<double> _progressAnimation;
 
   @override
   void initState() {
     super.initState();
     _progressController = AnimationController(
-      duration: const Duration(seconds: 10),
       vsync: this,
+      duration: const Duration(seconds: 5),
     );
-
-    _progressAnimation = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _progressController, curve: Curves.linear),
-    );
-
-    _progressController.addStatusListener((status) {
-      if (status == AnimationStatus.completed) {
-        _completeCleaning();
-      }
+    _progressController.addListener(() {
+      setState(() {
+        _cleaningProgress = _progressController.value;
+      });
     });
   }
 
@@ -60,40 +53,46 @@ class _BathroomScreenState extends State<BathroomScreen>
     final action = BathCleaningAction.getByType(type);
     if (action == null) return;
 
+    // Check if can afford
+    final game = context.read<GameStateProvider>();
+    if (action.coinCost > 0 && !game.canAfford(action.coinCost)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No tienes suficientes monedas'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Deduct coins if there's a cost
+    if (action.coinCost > 0) {
+      game.spendCoins(action.coinCost);
+    }
+
     setState(() {
-      _selectedCleaningType = type;
       _isCleaning = true;
-      _cleaningProgress = 0;
+      _selectedCleaningType = type;
     });
 
-    // Update animation duration
     _progressController.duration = action.duration;
     _progressController.forward(from: 0);
 
-    // Listen to progress
-    _progressController.addListener(() {
-      setState(() {
-        _cleaningProgress = _progressController.value;
-      });
+    Future.delayed(action.duration, () {
+      _completeCleaning(action);
     });
   }
 
-  void _completeCleaning() {
-    if (_selectedCleaningType == null) return;
+  void _completeCleaning(BathCleaningAction action) {
+    if (!mounted) return;
 
-    final action = BathCleaningAction.getByType(_selectedCleaningType!);
-    if (action == null) return;
-
-    // Apply stats
     final petProvider = context.read<PetProvider>();
     petProvider.clean(action.cleanlinessBonus);
 
-    // Show sparkles
     setState(() {
       _showSparkles = true;
     });
 
-    // Reset after animation
     Future.delayed(const Duration(milliseconds: 1500), () {
       if (mounted) {
         setState(() {
@@ -124,15 +123,8 @@ class _BathroomScreenState extends State<BathroomScreen>
       body: SafeArea(
         child: Column(
           children: [
-            // Header
             _buildHeader(),
-
-            // Bathroom area
-            Expanded(
-              child: _buildBathroomArea(),
-            ),
-
-            // Action selector
+            Expanded(child: _buildBathroomArea()),
             _buildActionSelector(),
           ],
         ),
@@ -147,22 +139,13 @@ class _BathroomScreenState extends State<BathroomScreen>
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Back button
           IconButton(
             onPressed: () {
-              if (_isCleaning) {
-                _cancelCleaning();
-              }
+              if (_isCleaning) _cancelCleaning();
               context.read<NavigationProvider>().setRoom(RoomType.livingRoom);
             },
-            icon: const Icon(
-              Icons.arrow_back,
-              color: AppColors.textSecondary,
-              size: 32,
-            ),
+            icon: const Icon(Icons.arrow_back, color: AppColors.textSecondary, size: 32),
           ),
-
-          // Title
           const Row(
             children: [
               Text('🛁 ', style: TextStyle(fontSize: 24)),
@@ -177,8 +160,6 @@ class _BathroomScreenState extends State<BathroomScreen>
               ),
             ],
           ),
-
-          // Coins
           Consumer<GameStateProvider>(
             builder: (context, game, _) => CoinDisplay(coins: game.coins),
           ),
@@ -190,10 +171,7 @@ class _BathroomScreenState extends State<BathroomScreen>
   Widget _buildBathroomArea() {
     return Stack(
       children: [
-        // Background
         _buildBathroomBackground(),
-
-        // Shower zone (top)
         if (_selectedCleaningType == CleaningType.shower && _isCleaning)
           Positioned(
             top: 20,
@@ -211,72 +189,37 @@ class _BathroomScreenState extends State<BathroomScreen>
               ],
             ),
           ),
-
-        // Pou in the center
-        Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Cleaning zone indicator
-              if (_selectedCleaningType != null)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: UIConstants.paddingMedium,
-                    vertical: UIConstants.paddingSmall,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(UIConstants.radiusRound),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        BathCleaningAction.getByType(_selectedCleaningType!)?.emoji ?? '',
-                        style: const TextStyle(fontSize: 24),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        BathCleaningAction.getByType(_selectedCleaningType!)?.name ?? '',
-                        style: const TextStyle(
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
+        Center(child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (_selectedCleaningType != null && _isCleaning)
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.cleanlinessColor.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-
-              const SizedBox(height: 20),
-
-              // Pou character
-              if (_selectedCleaningType == CleaningType.bathtub && _isCleaning)
-                // Pou in bathtub
-                Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    const BathtubWidget(hasWater: true, hasBubbles: true),
-                    const SizedBox(height: 60),
-                    const PouCharacter(size: 120),
-                  ],
-                )
-              else
-                // Normal Pou
-                const PouCharacter(size: 180),
-
-              const SizedBox(height: 20),
-
-              // Progress bar
-              if (_isCleaning) _buildProgressBar(),
+                child: Text(
+                  BathCleaningAction.getByType(_selectedCleaningType!)?.name ?? '',
+                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                ),
+              ),
+            const SizedBox(height: 20),
+            const PouCharacter(size: 200),
+            if (_isCleaning) ...[
+              const SizedBox(height: 30),
+              SizedBox(
+                width: 200,
+                child: LinearProgressIndicator(
+                  value: _cleaningProgress,
+                  backgroundColor: AppColors.cardBackground,
+                  valueColor: const AlwaysStoppedAnimation<Color>(AppColors.cleanlinessColor),
+                ),
+              ),
             ],
-          ),
-        ),
-
-        // Sparkle particles
-        if (_showSparkles)
-          const Positioned.fill(
-            child: SparkleParticles(),
-          ),
+          ],
+        )),
+        if (_showSparkles) Positioned.fill(child: _buildSparkles()),
       ],
     );
   }
@@ -288,107 +231,27 @@ class _BathroomScreenState extends State<BathroomScreen>
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            AppColors.bathroomColor.withOpacity(0.2),
+            AppColors.bathroomColor.withOpacity(0.3),
             AppColors.background,
           ],
         ),
       ),
-      child: Stack(
-        children: [
-          // Tiles pattern
-          Positioned.fill(
-            child: CustomPaint(
-              painter: TilePatternPainter(),
-            ),
-          ),
-
-          // Mirror
-          Positioned(
-            top: 30,
-            right: 30,
-            child: Container(
-              width: 100,
-              height: 150,
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.white.withOpacity(0.3), width: 3),
-              ),
-              child: const Center(
-                child: Text('🪞</', style: TextStyle(fontSize: 40)),
-              ),
-            ),
-          ),
-
-          // Sink
-          Positioned(
-            bottom: 50,
-            right: 30,
-            child: Column(
-              children: [
-                Container(
-                  width: 80,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.8),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                Container(
-                  width: 20,
-                  height: 30,
-                  color: Colors.grey.shade600,
-                ),
-              ],
-            ),
-          ),
-        ],
+      child: CustomPaint(
+        painter: TilePatternPainter(),
+        size: Size.infinite,
       ),
     );
   }
 
-  Widget _buildProgressBar() {
+  Widget _buildSparkles() {
     return Container(
-      width: 250,
-      padding: const EdgeInsets.all(UIConstants.paddingMedium),
-      decoration: BoxDecoration(
-        color: AppColors.surface.withOpacity(0.9),
-        borderRadius: BorderRadius.circular(UIConstants.radiusLarge),
-      ),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                _selectedCleaningType != null
-                    ? BathCleaningAction.getByType(_selectedCleaningType!)!.name
-                    : '',
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Text(
-                '${(_cleaningProgress * 100).toInt()}%',
-                style: const TextStyle(
-                  color: AppColors.primary,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: LinearProgressIndicator(
-              value: _cleaningProgress,
-              backgroundColor: AppColors.cardBackground,
-              valueColor: const AlwaysStoppedAnimation(AppColors.bathroomColor),
-              minHeight: 10,
-            ),
-          ),
-        ],
+      color: Colors.white.withOpacity(0.2),
+      child: Center(
+        child: Text('✨✨✨', style: TextStyle(fontSize: 60))
+            .animate(onPlay: (c) => c.repeat())
+            .scale(begin: const Offset(0.5, 0.5), end: const Offset(1.2, 1.2), duration: 500.ms)
+            .then()
+            .scale(begin: const Offset(1.2, 1.2), end: const Offset(0.5, 0.5), duration: 500.ms),
       ),
     );
   }
@@ -398,116 +261,120 @@ class _BathroomScreenState extends State<BathroomScreen>
       padding: const EdgeInsets.all(UIConstants.paddingMedium),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(UIConstants.radiusXLarge),
-        ),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(UIConstants.radiusLarge)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Handle
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: AppColors.divider,
-              borderRadius: BorderRadius.circular(2),
+          if (_isCleaning)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Text(
+                'Limpiando... ${(_cleaningProgress * 100).toInt()}%',
+                style: const TextStyle(color: Colors.white, fontSize: 16),
+              ),
             ),
-          ),
-          const SizedBox(height: UIConstants.paddingMedium),
-
-          // Title
-          const Text(
-            '💧 Selecciona una opción de limpieza',
-            style: TextStyle(
-              fontSize: 16,
-              color: AppColors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: UIConstants.paddingMedium),
-
-          // Action buttons
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: BathCleaningAction.allActions.map((action) {
-              final isSelected = _selectedCleaningType == action.type;
-              final isDisabled = _isCleaning;
-
-              return GestureDetector(
-                onTap: isDisabled ? null : () => _startCleaning(action.type),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.all(UIConstants.paddingMedium),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? AppColors.bathroomColor.withOpacity(0.3)
-                        : AppColors.cardBackground,
-                    borderRadius: BorderRadius.circular(UIConstants.radiusLarge),
-                    border: Border.all(
-                      color: isSelected ? AppColors.bathroomColor : Colors.transparent,
-                      width: 2,
-                    ),
-                  ),
-                  child: Column(
-                    children: [
-                      Text(
-                        action.emoji,
-                        style: const TextStyle(fontSize: 40),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        action.name,
-                        style: TextStyle(
-                          color: isDisabled
-                              ? AppColors.textMuted
-                              : AppColors.textPrimary,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '+${action.cleanlinessBonus.toInt()} 💗',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.cleanlinessColor,
-                        ),
-                      ),
-                      Text(
-                        '${action.duration.inSeconds}s',
-                        style: const TextStyle(
-                          fontSize: 10,
-                          color: AppColors.textMuted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }).toList(),
+            children: [
+              _buildActionButton(CleaningType.shower, '🚿', 3),
+              _buildActionButton(CleaningType.bathtub, '🛁', 5),
+              _buildActionButton(CleaningType.sink, '🚽', 2),
+            ],
           ),
         ],
       ),
     );
   }
+
+  Widget _buildActionButton(CleaningType type, String emoji, int coinCost) {
+    final action = BathCleaningAction.getByType(type);
+    final canAfford = context.read<GameStateProvider>().canAfford(coinCost);
+
+    return GestureDetector(
+      onTap: _isCleaning ? null : () => _startCleaning(type),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: _selectedCleaningType == type ? AppColors.cleanlinessColor.withOpacity(0.5) : AppColors.cardBackground,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: _selectedCleaningType == type ? AppColors.cleanlinessColor : Colors.transparent,
+          ),
+        ),
+        child: Column(
+          children: [
+            Text(emoji, style: const TextStyle(fontSize: 40)),
+            const SizedBox(height: 8),
+            Text(action?.name ?? '', style: const TextStyle(color: Colors.white, fontSize: 14)),
+            const SizedBox(height: 4),
+            Text('$coinCost 🪙', style: const TextStyle(color: AppColors.warning, fontSize: 12)),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
-// Tile pattern painter
+class ShowerHead extends StatelessWidget {
+  final double width;
+  const ShowerHead({super.key, this.width = 100});
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: Size(width, 50),
+      painter: _ShowerHeadPainter(),
+    );
+  }
+}
+
+class _ShowerHeadPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.grey
+      ..style = PaintingStyle.fill;
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, 10), paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class WaterDroplets extends StatelessWidget {
+  final bool isActive;
+  final int dropletCount;
+  const WaterDroplets({super.key, required this.isActive, required this.dropletCount});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!isActive) return const SizedBox();
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(dropletCount, (i) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: Text('💧', style: TextStyle(fontSize: 12 + (i % 5).toDouble()))
+            .animate(onPlay: (c) => c.repeat())
+            .moveY(begin: 0, end: 50 + (i % 20), duration: (500 + i * 50).ms)
+            .fadeOut(delay: 400.ms),
+      )),
+    );
+  }
+}
+
 class TilePatternPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.white.withOpacity(0.03)
+      ..color = Colors.white.withOpacity(0.1)
       ..style = PaintingStyle.stroke;
 
-    const tileSize = 50.0;
-
-    for (double x = 0; x < size.width; x += tileSize) {
-      for (double y = 0; y < size.height; y += tileSize) {
-        canvas.drawRect(
-          Rect.fromLTWH(x, y, tileSize, tileSize),
-          paint,
-        );
-      }
+    for (double y = 0; y < size.height; y += 30) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+    for (double x = 0; x < size.width; x += 30) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
     }
   }
 
