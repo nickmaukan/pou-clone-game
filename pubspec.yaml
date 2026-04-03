@@ -1,0 +1,50 @@
+name: pou_game
+description: A Pou-style virtual pet game in Flutter.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State Management
+  provider: ^6.1.1
+  
+  # Persistence
+  shared_preferences: ^2.2.2
+  sqflite: ^2.3.0
+  path_provider: ^2.1.1
+  path: ^1.8.3
+  
+  # Audio
+  audioplayers: ^5.2.1
+  
+  # UI/UX
+  flutter_animate: ^4.3.0
+  google_fonts: ^6.1.0
+  
+  # Utilities
+  uuid: ^4.2.2
+  intl: ^0.18.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+
+flutter:
+  uses-material-design: true
+  
+  # Asset folders (using emojis as placeholders)
+  # Actual image assets would go in these folders
+  
+  # Example of how to include assets when you have images:
+  # assets:
+  #   - assets/images/pou/
+  #   - assets/images/rooms/
+  #   - assets/images/food/
+  #   - assets/images/items/
+  #   - assets/sounds/

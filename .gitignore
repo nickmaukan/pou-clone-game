@@ -1,0 +1,37 @@
+# Built application
+build/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Flutter
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub/
+.dart_tool/
+
+# iOS/Android
+*.lock
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Large files (APK, etc)
+*.apk
+*.aab
+*.ipa
+*.dex
+
+# Secrets
+*.env
+*.pem
+*.key
+
+# Temp
+tmp/
+temp/
